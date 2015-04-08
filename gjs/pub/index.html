@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mxl2mid</title>
+<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css" rel="stylesheet">
+<script src="FileSaver.min.js"></script>
+<script src="gjs.js"></script>
+<script>
+function init(){
+	document.getElementById('converter').addEventListener('submit', submit, false);
+}
+
+function submit(e) {
+	var r = new FileReader(), file = document.getElementById('inputfile').files[0];
+	r.onload=function(e){
+		var ab = Mxl2mid(r.result, 'Shift_JIS');
+		saveAs(
+			new Blob([ab], {type: 'audio/midi'}),
+			file.name + '.mid'
+		);
+	};
+	r.readAsArrayBuffer(file);
+	e.preventDefault();
+	return false;
+}
+
+document.addEventListener('DOMContentLoaded', init, false);
+</script>
+<body>
+	<div class="container">
+		<h1 class="text-center">
+			Mxl2mid
+			<small>MusicXML to MIDI converter</small>
+			<a class="twitter-share-button"
+			  href="https://twitter.com/share">
+			Tweet
+			</a>
+			<script>
+			window.twttr=(function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src="https://platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);t._e=[];t.ready=function(f){t._e.push(f);};return t;}(document,"script","twitter-wjs"));
+			</script>
+		</h1>
+		<img src="image.png" alt="image" class="img-responsive center-block">
+		<form id="converter" class="form-inline text-center">
+			<div class="form-group">
+				<label for="inputfile" class="sr-only">choose your MusicXML file</label>
+				<input type="file" id="inputfile" class="form-control">
+			</div>
+			<button type="submit" class="btn btn-default">Convert to MIDI</button>
+			<p class="help-block">
+				<small>
+					This program supports only MusicXML file that was output from CeVIO Creative Studio.
+				</small>
+			</p>
+		</form>
+
+		<div class="well text-center">
+			<small>
+				Created by <a href="https://github.com/oov/mxl2mid" target="_blank">oov</a> | Powered by <a href="http://www.gopherjs.org/" target="_blank">GopherJS</a> | Please use a <a href="https://whatbrowser.org/" target="_blank">modern browser</a> | Please listen to <a href="https://www.youtube.com/watch?v=SldjqJz3thA" target="_blank">my song</a>
+			</small>
+		</div>
+	</div>
+</body>
+</html>

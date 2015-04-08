@@ -29,6 +29,8 @@ import (
 	"encoding/xml"
 	"io"
 	"strconv"
+
+	"golang.org/x/net/html/charset"
 )
 
 // MXLDoc holds all data for a music xml file
@@ -197,4 +199,15 @@ func (p *Pitch) Key() int {
 type Lyric struct {
 	Syllabic string `xml:"syllabic"`
 	Text     string `xml:"text"`
+}
+
+func Decode(r io.Reader) (*MXLDoc, error) {
+	var mxl MXLDoc
+	dec := xml.NewDecoder(r)
+	dec.CharsetReader = charset.NewReaderLabel
+	err := dec.Decode(&mxl)
+	if err != nil {
+		return nil, err
+	}
+	return &mxl, nil
 }

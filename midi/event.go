@@ -14,15 +14,14 @@ func writeBE(w io.Writer, data interface{}) error {
 
 func writeUvarintBE(w io.Writer, x uint32) (int, error) {
 	var buf [4]byte
-	var n int
-	for n = 0; x >= 0x80; n++ {
-		buf[3-n] = uint8(x & 0x7f)
+	n := 1
+	for ; x > 0x7f; n++ {
+		buf[4-n] = uint8(x & 0x7f)
 		x >>= 7
 	}
-	buf[3-n] = uint8(x)
-	n++
-	for i := 0; i < n-1; i++ {
-		buf[i+4-n] |= 0x80
+	buf[4-n] = uint8(x)
+	for i := 4 - n; i < 3; i++ {
+		buf[i] |= 0x80
 	}
 	return w.Write(buf[4-n:])
 }
@@ -31,6 +30,10 @@ type Header struct {
 	Format    uint16
 	NumTracks uint16
 	Division  uint16
+}
+
+func (h *Header) Size() int {
+	return 14
 }
 
 func (h *Header) WriteTo(w io.Writer) (n int64, err error) {
@@ -72,76 +75,78 @@ func (th *TrackHeader) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (th TrackHeader) Size() int {
+func (th *TrackHeader) Size() int {
 	return 8
 }
 
 type DeltaTime uint32
 
-func (d DeltaTime) WriteTo(w io.Writer) (n int64, err error) {
-	var l int
-	l, err = writeUvarintBE(w, uint32(d))
+func (d DeltaTime) Size() int {
+	x, n := uint32(d), 1
+	for ; x >= 0x80; n++ {
+		x >>= 7
+	}
+	return n
+}
+
+func (d DeltaTime) WriteTo(w io.Writer) (int64, error) {
+	l, err := writeUvarintBE(w, uint32(d))
 	return int64(l), err
 }
 
 type NoteOnEvent struct {
-	DeltaTime DeltaTime
-	Channel   uint8
-	Key       uint8
-	Velocity  uint8
+	Channel  uint8
+	Key      uint8
+	Velocity uint8
 }
 
-func (no *NoteOnEvent) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = no.DeltaTime.WriteTo(w); err != nil {
-		return
-	}
+func (no *NoteOnEvent) Size() int {
+	return 3
+}
 
-	if err = writeBE(w, []byte{
+func (no *NoteOnEvent) WriteTo(w io.Writer) (int64, error) {
+	if err := writeBE(w, []byte{
 		0x90 | (no.Channel & 0x0f),
 		no.Key & 0x7f,
 		no.Velocity & 0x7f,
 	}); err != nil {
-		return
+		return 0, err
 	}
-	n += 3
-	return
+	return 3, nil
 }
 
 type NoteOffEvent struct {
-	DeltaTime DeltaTime
-	Channel   uint8
-	Key       uint8
-	Velocity  uint8
+	Channel  uint8
+	Key      uint8
+	Velocity uint8
 }
 
-func (no *NoteOffEvent) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = no.DeltaTime.WriteTo(w); err != nil {
-		return
-	}
+func (no *NoteOffEvent) Size() int {
+	return 3
+}
 
-	if err = writeBE(w, []byte{
+func (no *NoteOffEvent) WriteTo(w io.Writer) (int64, error) {
+	if err := writeBE(w, []byte{
 		0x80 | (no.Channel & 0x0f),
 		no.Key & 0x7f,
 		no.Velocity & 0x7f,
 	}); err != nil {
-		return
+		return 0, err
 	}
-	n += 3
-	return
+	return 3, nil
 }
 
 type TempoEvent struct {
-	DeltaTime DeltaTime
-	BPM       float64
+	BPM float64
 }
 
-func (te *TempoEvent) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = te.DeltaTime.WriteTo(w); err != nil {
-		return
-	}
+func (te *TempoEvent) Size() int {
+	return 6
+}
 
+func (te *TempoEvent) WriteTo(w io.Writer) (int64, error) {
 	bpm := uint32(60e6 / te.BPM)
-	if err = writeBE(w, []byte{
+	if err := writeBE(w, []byte{
 		0xff,
 		0x51,
 		0x03,
@@ -149,19 +154,21 @@ func (te *TempoEvent) WriteTo(w io.Writer) (n int64, err error) {
 		uint8((bpm >> 8) & 0xff),
 		uint8(bpm & 0xff),
 	}); err != nil {
-		return
+		return 0, err
 	}
-	n += 6
-	return
+	return 6, nil
 }
 
 type TimeSignatureEvent struct {
-	DeltaTime   DeltaTime
 	Numerator   uint8
 	Denominator uint8
 }
 
-func (te *TimeSignatureEvent) WriteTo(w io.Writer) (n int64, err error) {
+func (te *TimeSignatureEvent) Size() int {
+	return 7
+}
+
+func (te *TimeSignatureEvent) WriteTo(w io.Writer) (int64, error) {
 	var d uint8 // = uint8(math.Log2(te.Denominator))
 	switch te.Denominator {
 	case 1:
@@ -183,11 +190,7 @@ func (te *TimeSignatureEvent) WriteTo(w io.Writer) (n int64, err error) {
 	default:
 		return 0, errors.New("unsupported denominator of the time signature")
 	}
-	if n, err = te.DeltaTime.WriteTo(w); err != nil {
-		return
-	}
-
-	if err = writeBE(w, []byte{
+	if err := writeBE(w, []byte{
 		0xff,
 		0x58,
 		0x04,
@@ -196,14 +199,12 @@ func (te *TimeSignatureEvent) WriteTo(w io.Writer) (n int64, err error) {
 		0x18,
 		0x08,
 	}); err != nil {
-		return
+		return 0, err
 	}
-	n += 7
-	return
+	return 7, nil
 }
 
 type TextEvent struct {
-	DeltaTime   DeltaTime
 	Type        TextEventType
 	Text        string
 	Transformer transform.Transformer
@@ -214,6 +215,14 @@ const (
 	TextEventTypeLyric = TextEventType(0x05)
 )
 
+func (te *TextEvent) Size() int {
+	if te.Transformer != nil {
+		buf, _, _ := transform.Bytes(te.Transformer, []byte(te.Text))
+		return 3 + len(buf)
+	}
+	return 3 + len(te.Text)
+}
+
 func (te *TextEvent) WriteTo(w io.Writer) (n int64, err error) {
 	var buf []byte
 	if te.Transformer != nil {
@@ -223,10 +232,6 @@ func (te *TextEvent) WriteTo(w io.Writer) (n int64, err error) {
 		}
 	} else {
 		buf = []byte(te.Text)
-	}
-
-	if n, err = te.DeltaTime.WriteTo(w); err != nil {
-		return
 	}
 
 	if err = writeBE(w, []byte{
@@ -246,21 +251,19 @@ func (te *TextEvent) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 type EndOfTrackEvent struct {
-	DeltaTime DeltaTime
 }
 
-func (eote *EndOfTrackEvent) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = eote.DeltaTime.WriteTo(w); err != nil {
-		return
-	}
+func (eote *EndOfTrackEvent) Size() int {
+	return 3
+}
 
-	if err = writeBE(w, []byte{
+func (eote *EndOfTrackEvent) WriteTo(w io.Writer) (int64, error) {
+	if err := writeBE(w, []byte{
 		0xff,
 		0x2f,
 		0x00,
 	}); err != nil {
-		return
+		return 0, err
 	}
-	n += 3
-	return
+	return 3, nil
 }
